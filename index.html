@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,12 +10,76 @@
     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-
 <body class="bg-gray-100 font-sans">
     <div id="root" class="container mx-auto p-4"></div>
 
     <script type="text/babel">
+        const StatusCodeGuide = ({ onClose }) => {
+            const [statusCodes, setStatusCodes] = React.useState(null);
+            const [loading, setLoading] = React.useState(true);
+            
+            React.useEffect(() => {
+                const fetchStatusCodes = async () => {
+                    try {
+                        const response = await axios.get('http://localhost:8000/status_codes');
+                        setStatusCodes(response.data.status_codes);
+                    } catch (error) {
+                        console.error("Failed to fetch status codes:", error);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                
+                fetchStatusCodes();
+            }, []);
+            
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-screen overflow-y-auto">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold">Gurobi Status Codes Reference</h2>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        {loading ? (
+                            <div className="flex justify-center py-8">
+                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
+                            </div>
+                        ) : (
+                            <div className="mt-4">
+                                {statusCodes ? (
+                                    <table className="min-w-full bg-white">
+                                        <thead>
+                                            <tr>
+                                                <th className="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs leading-4 font-medium text-gray-500 uppercase tracking-wider">Code</th>
+                                                <th className="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs leading-4 font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white">
+                                            {Object.entries(statusCodes).map(([code, description]) => (
+                                                <tr key={code}>
+                                                    <td className="py-2 px-4 border-b border-gray-200">{code}</td>
+                                                    <td className="py-2 px-4 border-b border-gray-200">{description}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <p className="text-gray-500 text-center">No status codes available.</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
         function TransportSolverApp() {
+            const [showStatusGuide, setShowStatusGuide] = React.useState(false);
             const [numOrigins, setNumOrigins] = React.useState(3);
             const [numDestinations, setNumDestinations] = React.useState(4);
             const [costs, setCosts] = React.useState(
@@ -29,7 +92,6 @@
             const [message, setMessage] = React.useState(null);
             const [loading, setLoading] = React.useState(false);
 
-            // Update table dimensions when origins/destinations change
             const updateTables = () => {
                 setCosts(
                     Array(numOrigins).fill().map(() => Array(numDestinations).fill(0))
@@ -41,7 +103,6 @@
                 setMessage(null);
             };
 
-            // Handle input changes for costs, supplies, demands
             const handleCostChange = (i, j, value) => {
                 const newCosts = [...costs];
                 newCosts[i][j] = parseFloat(value) || 0;
@@ -60,55 +121,107 @@
                 setDemands(newDemands);
             };
 
-            // Solve the model by calling the /solve_transport endpoint
+            const getStatusColor = (isOptimal) => {
+                return isOptimal ? "text-green-600" : "text-yellow-600";
+            };
+
+            const getStatusIcon = (isOptimal) => {
+                return isOptimal ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                );
+            };
+
+            const createInfeasibleScenario = () => {
+                const newSupplies = Array(numOrigins).fill(10);
+                if (numOrigins > 0) {
+                    newSupplies[0] = -10;  // Set first supply to negative to make the problem infeasible
+                }
+                const newDemands = Array(numDestinations).fill(10);
+                setSupplies(newSupplies);
+                setDemands(newDemands);
+            };
+
+            const createNegativeCostsScenario = () => {
+                const newCosts = Array(numOrigins).fill().map(() => Array(numDestinations).fill(-10));
+                setCosts(newCosts);
+            };
+
             const solveModel = async () => {
                 setLoading(true);
                 setError(null);
                 setMessage(null);
                 try {
+                    console.log("data",{
+                        costs_data: costs,
+                        supplies_data: supplies,
+                        demands_data: demands
+                    })
+
                     const response = await axios.post('http://localhost:8000/solve_transport', {
                         costs_data: { costs },
                         supplies_data: { supplies },
                         demands_data: { demands }
                     });
+                    
+                    
                     setSolution(response.data);
-                    setMessage(response.data.messages.join("\n")); // Display warnings
-                } catch (err) {
-                    setError(err.response?.data?.detail || 'Failed to solve the transportation problem');
-                } finally {
-                    setLoading(false);
+                    console.log("response", response.data)
+                    if (response.data.messages?.length > 0) {
+                        setMessage(response.data.messages.join("\n"));
+                    }
                 }
+                catch (err) {
+                        if (err.response && err.response.data && err.response.data.detail) {
+                            const detail = err.response.data.detail;
+                            if (typeof detail === 'string') {
+                                setError(detail);
+                            } else if (Array.isArray(detail)) {
+                                const errorMessages = detail.map(d => d.msg).join(', ');
+                                setError(errorMessages);
+                            } else {
+                                setError('An unknown error occurred');
+                            }
+                        } else {
+                            setError('Failed to solve the transportation problem');
+                        }
+                    }
+                    finally {
+                        setLoading(false);
+                    }
             };
-
-
 
             return (
                 <div className="max-w-7xl mx-auto bg-white rounded-lg shadow-lg p-6">
                     <h1 className="text-2xl font-bold text-gray-800 mb-6">Transportation Problem Solver</h1>
 
-                    {/* Parameters */}
                     <div className="mb-6">
                         <h2 className="text-lg font-semibold text-gray-700 mb-2">Problem Parameters</h2>
                         <div className="flex space-x-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-600">Number of Origins</label>
+                                <label className="block text-sm font-medium text-gray-600">Origins</label>
                                 <input
                                     type="number"
                                     min="1"
                                     max="20"
                                     value={numOrigins}
-                                    onChange={(e) => setNumOrigins(parseInt(e.target.value) || 1)}
+                                    onChange={(e) => setNumOrigins(Math.max(1, parseInt(e.target.value) || 1))}
                                     className="mt-1 p-2 border rounded w-24"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-600">Number of Destinations</label>
+                                <label className="block text-sm font-medium text-gray-600">Destinations</label>
                                 <input
                                     type="number"
                                     min="1"
                                     max="20"
                                     value={numDestinations}
-                                    onChange={(e) => setNumDestinations(parseInt(e.target.value) || 1)}
+                                    onChange={(e) => setNumDestinations(Math.max(1, parseInt(e.target.value) || 1))}
                                     className="mt-1 p-2 border rounded w-24"
                                 />
                             </div>
@@ -121,9 +234,7 @@
                         </div>
                     </div>
 
-                    {/* Input Tables */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        {/* Costs Table */}
                         <div>
                             <h2 className="text-lg font-semibold text-gray-700 mb-2">Transportation Costs</h2>
                             <table className="w-full border-collapse border border-gray-300">
@@ -156,7 +267,6 @@
                             </table>
                         </div>
 
-                        {/* Supplies and Demands */}
                         <div>
                             <h2 className="text-lg font-semibold text-gray-700 mb-2">Supplies and Demands</h2>
                             <div className="mb-4">
@@ -192,7 +302,21 @@
                         </div>
                     </div>
 
-                    {/* Solve Button */}
+                    <div className="mb-6 flex space-x-4">
+                        <button
+                            onClick={createInfeasibleScenario}
+                            className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+                        >
+                            Test Infeasible Scenario
+                        </button>
+                        <button
+                            onClick={createNegativeCostsScenario}
+                            className="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600"
+                        >
+                            Test Negative Costs
+                        </button>
+                    </div>
+
                     <div className="mb-6">
                         <button
                             onClick={solveModel}
@@ -203,21 +327,153 @@
                         </button>
                     </div>
 
-                    {/* Solution or Error */}
-                    {message && <div className="text-green-600 font-medium mb-4">{message}</div>}
-                    {error && <div className="text-red-600 font-medium mb-4">{error}</div>}
+                    {message && <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+                        <p className="text-blue-700"><strong>Information:</strong> {message}</p>
+                    </div>}
+                    
+                    {error && <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+                        <p className="text-red-700"><strong>Error:</strong> {error}</p>
+                    </div>}
+
+                    <div className="mb-6">
+                        <button
+                            onClick={() => setShowStatusGuide(true)}
+                            className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 flex items-center"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1v-3a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                            Status Codes Guide
+                        </button>
+                    </div>
+
+                    {showStatusGuide && <StatusCodeGuide onClose={() => setShowStatusGuide(false)} />}
+
                     {solution && (
                         <div>
-                            <h2 className="text-lg font-semibold text-gray-700 mb-2">Solution</h2>
-                            <pre className="bg-gray-100 p-4 rounded">{JSON.stringify(solution, null, 2)}</pre>
+                            <h2 className="text-lg font-semibold text-gray-700 mb-2">Solution Status</h2>
+                            <div className={`p-4 mb-6 border-l-4 ${solution.is_optimal ? 'bg-green-50 border-green-500' : 'bg-yellow-50 border-yellow-500'}`}>
+                                <div className={`font-bold text-lg mb-2 ${getStatusColor(solution.is_optimal)}`}>
+                                    {getStatusIcon(solution.is_optimal)}
+                                    Status: {solution.status_message}
+                                </div>
+                                <p className="text-gray-700">Status Code: {solution.status}</p>
+                                {solution.is_optimal ? (
+                                    <p className="text-green-600 mt-2">Total Cost: {solution.cost?.toFixed(2)}</p>
+                                ) : (
+                                    <p className="text-gray-700 mt-2">No optimal solution available</p>
+                                )}
+                            </div>
+
+                            {solution.is_optimal && (
+                                <>
+                                    <h2 className="text-lg font-semibold text-gray-700 mb-2">Solution Details</h2>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                        <div>
+                                            <h3 className="text-md font-semibold text-gray-700 mb-2">Flow Matrix</h3>
+                                            <table className="w-full border-collapse border border-gray-300">
+                                                <thead>
+                                                    <tr className="bg-gray-100">
+                                                        <th className="border border-gray-300 p-2"></th>
+                                                        {Array.from({ length: numDestinations }).map((_, j) => (
+                                                            <th key={j} className="border border-gray-300 p-2">D{j + 1}</th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {solution.solution.map((row, i) => (
+                                                        <tr key={i} className={i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                                                            <td className="border border-gray-300 p-2 font-medium">O{i + 1}</td>
+                                                            {row.map((value, j) => (
+                                                                <td key={j} className="border border-gray-300 p-2 text-center">
+                                                                    {value?.toFixed(2)}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        <div>
+                                            <h3 className="text-md font-semibold text-gray-700 mb-2">Flows</h3>
+                                            <div className="bg-gray-50 p-4 rounded max-h-80 overflow-y-auto">
+                                                {solution.flows?.length > 0 ? (
+                                                    <ul className="space-y-2">
+                                                        {solution.flows.map((flow, idx) => (
+                                                            <li key={idx} className="border-b border-gray-200 pb-2">
+                                                                O{flow.from + 1} → D{flow.to + 1}: {flow.quantity?.toFixed(2)} units
+                                                                <br />
+                                                                <span className="text-sm text-gray-600">
+                                                                    Cost: {flow.total_cost?.toFixed(2)}
+                                                                </span>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                ) : (
+                                                    <p className="text-gray-600">No active flows</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {solution.dual_values && (
+                                        <div className="mb-6">
+                                            <h3 className="text-md font-semibold text-gray-700 mb-2">Shadow Prices</h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div>
+                                                    <h4 className="text-sm font-medium text-gray-600 mb-2">Supply</h4>
+                                                    <div className="bg-gray-50 p-4 rounded">
+                                                        <ul className="space-y-1">
+                                                            {Object.entries(solution.dual_values.supply_duals || {}).map(([key, value]) => (
+                                                                <li key={key}>O{parseInt(key) + 1}: {value?.toFixed(4)}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-sm font-medium text-gray-600 mb-2">Demand</h4>
+                                                    <div className="bg-gray-50 p-4 rounded">
+                                                        <ul className="space-y-1">
+                                                            {Object.entries(solution.dual_values.demand_duals || {}).map(([key, value]) => (
+                                                                <li key={key}>D{parseInt(key) + 1}: {value?.toFixed(4)}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            <div className="mt-6 p-4 bg-gray-100 rounded-lg">
+                                <h3 className="text-lg font-semibold text-gray-700 mb-2 flex items-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1v-3a1 1 0 00-1-1z" clipRule="evenodd" />
+                                    </svg>
+                                    Technical Details
+                                </h3>
+                                <button 
+                                    className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded"
+                                    onClick={() => {
+                                        const techDetails = document.getElementById('techDetails');
+                                        techDetails.style.display = techDetails.style.display === 'none' ? 'block' : 'none';
+                                    }}
+                                >
+                                    Toggle Raw Data
+                                </button>
+                                <pre id="techDetails" style={{display: 'none'}} className="mt-4 bg-gray-50 p-4 rounded overflow-x-auto">
+                                    {JSON.stringify(solution, null, 2)}
+                                </pre>
+                            </div>
                         </div>
                     )}
                 </div>
             );
         }
 
-        ReactDOM.render(<TransportSolverApp />, document.getElementById('root'));
+        ReactDOM.createRoot(document.getElementById('root')).render(<TransportSolverApp />);
     </script>
-</body>
-
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'93c2a843dcb044ed',t:'MTc0NjY0MTI0OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>

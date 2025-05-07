@@ -1,4 +1,3 @@
-
 from gurobipy import Model, GRB, LinExpr
 import numpy as np
 
@@ -11,6 +10,8 @@ class TransportModel:
         self.n_origins = 0
         self.n_destinations = 0
         self.costs = None
+        self.status = None
+        self.status_message = None
 
 
     def build_model(self, costs, supplies, demands):
@@ -40,9 +41,10 @@ class TransportModel:
             costs = [row[:min_len] for row in costs]
             demands = demands[:min_len]
 
+
         if sum(supplies) < sum(demands):
             messages.append("Warning: Total supply is less than total demand. Adjusting supply to match demand...")
-            supplies[-1] += sum(demands) - sum(supplies)
+        #    supplies[-1] += sum(demands) - sum(supplies)
 
         self.n_origins = len(supplies)
         self.n_destinations = len(demands)
@@ -111,7 +113,33 @@ class TransportModel:
             bool: True if an optimal solution is found, False otherwise.
         """
         self.prob.optimize()
+        self.status = self.prob.status
+        self.status_message = self.get_status_message()
         return self.prob.status == GRB.OPTIMAL
+    
+    def get_status_message(self):
+        """
+        Get a human-readable status message based on the Gurobi status code.
+        
+        Returns:
+            str: Status message describing the solution status
+        """
+        status_messages = {
+            GRB.OPTIMAL: "Optimal solution found",
+            GRB.INFEASIBLE: "Problem is infeasible - no feasible solution exists",
+            GRB.INF_OR_UNBD: "Problem is unbounded or infeasible",
+            GRB.UNBOUNDED: "Problem is unbounded - objective can decrease indefinitely",
+            GRB.ITERATION_LIMIT: "Iteration limit reached before optimal solution found",
+            GRB.NODE_LIMIT: "Node limit reached before optimal solution found",
+            GRB.TIME_LIMIT: "Time limit reached before optimal solution found",
+            GRB.SOLUTION_LIMIT: "Solution limit reached",
+            GRB.INTERRUPTED: "Optimization was interrupted by the user",
+            GRB.NUMERIC: "Numerical issues encountered during optimization",
+            GRB.SUBOPTIMAL: "Suboptimal solution found",
+            GRB.INPROGRESS: "Optimization in progress",
+            GRB.USER_OBJ_LIMIT: "User objective limit reached"
+        }
+        return status_messages.get(self.status, f"Unknown status code: {self.status}")
 
     def get_solution(self):
         """
@@ -120,8 +148,15 @@ class TransportModel:
         Returns:
             dict: A dictionary containing the solution matrix, total cost, and flows.
         """
-        if self.prob.status != GRB.OPTIMAL:
-            return None
+        if self.status != GRB.OPTIMAL:
+            return {
+                "solution": [],
+                "cost": 0,
+                "flows": [],
+                "status": self.status,
+                "status_message": self.status_message
+            }
+            
         solution = np.zeros((self.n_origins, self.n_destinations))
         for i in range(self.n_origins):
             for j in range(self.n_destinations):
@@ -130,7 +165,13 @@ class TransportModel:
         flows = [{'from': i, 'to': j, 'quantity': solution[i, j], 'cost': self.costs[i][j],
                   'total_cost': self.costs[i][j] * solution[i, j]}
                  for i in range(self.n_origins) for j in range(self.n_destinations) if solution[i, j] > 1e-6]
-        return {"solution": solution.tolist(), "cost": cost, "flows": flows}
+        return {
+            "solution": solution.tolist(), 
+            "cost": cost, 
+            "flows": flows,
+            "status": self.status,
+            "status_message": self.status_message
+        }
 
     def is_degenerate(self):
         """
@@ -139,6 +180,9 @@ class TransportModel:
         Returns:
             bool: True if the solution is degenerate, False otherwise.
         """
+        if self.status != GRB.OPTIMAL:
+            return False
+            
         basic_vars = sum(1 for var in self.x.values() if abs(var.x) > 1e-6)
         return basic_vars < (self.n_origins + self.n_destinations - 1)
 
@@ -149,8 +193,9 @@ class TransportModel:
         Returns:
             dict: A dictionary containing dual values for supply and demand constraints.
         """
-        if self.prob.status != GRB.OPTIMAL:
+        if self.status != GRB.OPTIMAL:
             return None
+            
         supply_duals = {i: self.supply_constraints[i].Pi for i in self.supply_constraints}
         demand_duals = {j: self.demand_constraints[j].Pi for j in self.demand_constraints}
         return {"supply_duals": supply_duals, "demand_duals": demand_duals}
