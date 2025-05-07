@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transportation Problem Solver</title>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 font-sans">
+    <div id="root" class="container mx-auto p-4"></div>
+
+    <script type="text/babel">
+        function TransportSolverApp() {
+            const [numOrigins, setNumOrigins] = React.useState(3);
+            const [numDestinations, setNumDestinations] = React.useState(4);
+            const [costs, setCosts] = React.useState(
+                Array(3).fill().map(() => Array(4).fill(0))
+            );
+            const [supplies, setSupplies] = React.useState(Array(3).fill(0));
+            const [demands, setDemands] = React.useState(Array(4).fill(0));
+            const [solution, setSolution] = React.useState(null);
+            const [error, setError] = React.useState(null);
+            const [message, setMessage] = React.useState(null);
+            const [loading, setLoading] = React.useState(false);
+
+            // Update table dimensions when origins/destinations change
+            const updateTables = () => {
+                setCosts(
+                    Array(numOrigins).fill().map(() => Array(numDestinations).fill(0))
+                );
+                setSupplies(Array(numOrigins).fill(0));
+                setDemands(Array(numDestinations).fill(0));
+                setSolution(null);
+                setError(null);
+                setMessage(null);
+            };
+
+            // Handle input changes for costs, supplies, demands
+            const handleCostChange = (i, j, value) => {
+                const newCosts = [...costs];
+                newCosts[i][j] = parseFloat(value) || 0;
+                setCosts(newCosts);
+            };
+
+            const handleSupplyChange = (i, value) => {
+                const newSupplies = [...supplies];
+                newSupplies[i] = parseFloat(value) || 0;
+                setSupplies(newSupplies);
+            };
+
+            const handleDemandChange = (j, value) => {
+                const newDemands = [...demands];
+                newDemands[j] = parseFloat(value) || 0;
+                setDemands(newDemands);
+            };
+
+            // Solve the model by calling the /solve_transport endpoint
+            const solveModel = async () => {
+                setLoading(true);
+                setError(null);
+                setMessage(null);
+                try {
+                    const response = await axios.post('http://localhost:8000/solve_transport', {
+                        costs_data: { costs },
+                        supplies_data: { supplies },
+                        demands_data: { demands }
+                    });
+                    setSolution(response.data);
+                    setMessage(response.data.messages.join("\n")); // Display warnings
+                } catch (err) {
+                    setError(err.response?.data?.detail || 'Failed to solve the transportation problem');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+
+
+            return (
+                <div className="max-w-7xl mx-auto bg-white rounded-lg shadow-lg p-6">
+                    <h1 className="text-2xl font-bold text-gray-800 mb-6">Transportation Problem Solver</h1>
+
+                    {/* Parameters */}
+                    <div className="mb-6">
+                        <h2 className="text-lg font-semibold text-gray-700 mb-2">Problem Parameters</h2>
+                        <div className="flex space-x-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-600">Number of Origins</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="20"
+                                    value={numOrigins}
+                                    onChange={(e) => setNumOrigins(parseInt(e.target.value) || 1)}
+                                    className="mt-1 p-2 border rounded w-24"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-600">Number of Destinations</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="20"
+                                    value={numDestinations}
+                                    onChange={(e) => setNumDestinations(parseInt(e.target.value) || 1)}
+                                    className="mt-1 p-2 border rounded w-24"
+                                />
+                            </div>
+                            <button
+                                onClick={updateTables}
+                                className="mt-6 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                            >
+                                Update Tables
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Input Tables */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        {/* Costs Table */}
+                        <div>
+                            <h2 className="text-lg font-semibold text-gray-700 mb-2">Transportation Costs</h2>
+                            <table className="w-full border-collapse border border-gray-300">
+                                <thead>
+                                    <tr className="bg-gray-100">
+                                        <th className="border border-gray-300 p-2"></th>
+                                        {Array.from({ length: numDestinations }).map((_, j) => (
+                                            <th key={j} className="border border-gray-300 p-2">D{j + 1}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {costs.map((row, i) => (
+                                        <tr key={i} className={i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                                            <td className="border border-gray-300 p-2 font-medium">O{i + 1}</td>
+                                            {row.map((value, j) => (
+                                                <td key={j} className="border border-gray-300 p-2">
+                                                    <input
+                                                        type="number"
+                                                        value={value}
+                                                        onChange={(e) => handleCostChange(i, j, e.target.value)}
+                                                        className="w-full p-1 border rounded"
+                                                        step="any"
+                                                    />
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Supplies and Demands */}
+                        <div>
+                            <h2 className="text-lg font-semibold text-gray-700 mb-2">Supplies and Demands</h2>
+                            <div className="mb-4">
+                                <h3 className="text-sm font-medium text-gray-600">Supplies</h3>
+                                {supplies.map((value, i) => (
+                                    <div key={i} className="flex items-center space-x-2 mb-2">
+                                        <label className="text-sm font-medium text-gray-600">O{i + 1}:</label>
+                                        <input
+                                            type="number"
+                                            value={value}
+                                            onChange={(e) => handleSupplyChange(i, e.target.value)}
+                                            className="p-1 border rounded w-24"
+                                            step="any"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-medium text-gray-600">Demands</h3>
+                                {demands.map((value, j) => (
+                                    <div key={j} className="flex items-center space-x-2 mb-2">
+                                        <label className="text-sm font-medium text-gray-600">D{j + 1}:</label>
+                                        <input
+                                            type="number"
+                                            value={value}
+                                            onChange={(e) => handleDemandChange(j, e.target.value)}
+                                            className="p-1 border rounded w-24"
+                                            step="any"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Solve Button */}
+                    <div className="mb-6">
+                        <button
+                            onClick={solveModel}
+                            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                            disabled={loading}
+                        >
+                            {loading ? 'Solving...' : 'Solve Problem'}
+                        </button>
+                    </div>
+
+                    {/* Solution or Error */}
+                    {message && <div className="text-green-600 font-medium mb-4">{message}</div>}
+                    {error && <div className="text-red-600 font-medium mb-4">{error}</div>}
+                    {solution && (
+                        <div>
+                            <h2 className="text-lg font-semibold text-gray-700 mb-2">Solution</h2>
+                            <pre className="bg-gray-100 p-4 rounded">{JSON.stringify(solution, null, 2)}</pre>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<TransportSolverApp />, document.getElementById('root'));
+    </script>
+</body>
+
+</html>
