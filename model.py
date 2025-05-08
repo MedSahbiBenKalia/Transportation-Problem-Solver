@@ -44,7 +44,7 @@ class TransportModel:
 
         if sum(supplies) < sum(demands):
             messages.append("Warning: Total supply is less than total demand. Adjusting supply to match demand...")
-        #    supplies[-1] += sum(demands) - sum(supplies)
+        
 
         self.n_origins = len(supplies)
         self.n_destinations = len(demands)
